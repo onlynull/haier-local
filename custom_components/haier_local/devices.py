@@ -1,8 +1,9 @@
-"""固定接入的两台设备类型。模块号和局域网地址在安装时填写。"""
+"""固定接入的两台设备类型。模块号登录后按型号从云端匹配。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Mapping
 
 from .const import (
     CONF_FRIDGE_ID,
@@ -74,3 +75,42 @@ def normalize_device_id(value: str) -> str:
     if len(text) != 12 or any(char not in "0123456789ABCDEF" for char in text):
         raise ValueError("设备模块号应为 12 位十六进制")
     return text
+
+
+def _cloud_text(value: Any) -> str:
+    return str(value or "").strip().upper()
+
+
+def cloud_device_matches(spec: DeviceSpec, device: Mapping[str, Any]) -> bool:
+    """用官方型号或硬件型号匹配云端 deviceinfos 条目。"""
+    model = spec.model.upper()
+    hardware = spec.hw_version.upper()
+    product_name = _cloud_text(device.get("productNameT"))
+    product_code = _cloud_text(device.get("productCodeT"))
+    wifi_type = _cloud_text(device.get("wifiType"))
+    device_name = _cloud_text(device.get("deviceName"))
+    identity = {product_name, product_code, wifi_type}
+    return (
+        model in identity
+        or hardware in identity
+        or model in product_name
+        or model in device_name
+        or hardware in product_name
+    )
+
+
+def pick_cloud_device_id(spec: DeviceSpec, devices: list[Mapping[str, Any]]) -> str:
+    """从账号设备列表取出该产品的模块号；多台时优先在线设备。"""
+    matches = [item for item in devices if cloud_device_matches(spec, item)]
+    if not matches:
+        from .api.errors import DeviceLookupError
+
+        raise DeviceLookupError(spec.key)
+    online = [item for item in matches if item.get("online")]
+    chosen = (online or matches)[0]
+    try:
+        return normalize_device_id(str(chosen.get("deviceId") or ""))
+    except ValueError as exc:
+        from .api.errors import DeviceLookupError
+
+        raise DeviceLookupError(spec.key) from exc

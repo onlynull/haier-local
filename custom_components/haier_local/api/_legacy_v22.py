@@ -81,7 +81,7 @@ def login(sess, phone, password):
     ti = obj['data']['tokenInfo']
     return (phone, ti['accountToken'])
 
-def device_list(sess, token, client_id, *, validate_auth=False):
+def device_list(sess, token, client_id, *, validate_auth=False, quiet=False):
     r = sess.get(DEVICES_API, headers=headers(DEVICES_API, token, client_id), timeout=20)
     print(f'[*] device list HTTP {r.status_code}')
     try:
@@ -99,8 +99,9 @@ def device_list(sess, token, client_id, *, validate_auth=False):
         devices = obj['data'].get('deviceinfos')
     if devices is None:
         devices = []
-    for d in devices:
-        print(f'    {d.get('deviceId')}  {d.get('deviceName')}  {d.get('productNameT')}  online={d.get('online')}')
+    if not quiet:
+        for d in devices:
+            print(f'    {d.get('deviceId')}  {d.get('deviceName')}  {d.get('productNameT')}  online={d.get('online')}')
     return devices
 
 def load_auth_cache(path):

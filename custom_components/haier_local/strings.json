@@ -3,20 +3,20 @@
     "step": {
       "user": {
         "title": "海尔本地",
-        "description": "本集成通过局域网 TCP 56800 本地控制设备。安装时使用海尔智家账号登录，仅用于获取设备 LocalKey。模块号和 IP 填写在本机，不会写入集成源码。",
+        "description": "本集成通过局域网 TCP 56800 本地控制设备。登录海尔智家后按型号自动匹配冰箱和热水器模块号，并获取 LocalKey。局域网 IP 填写在本机。",
         "data": {
           "phone": "海尔智家手机号",
           "password": "海尔智家密码",
-          "fridge_id": "冰箱模块号",
           "fridge_ip": "冰箱局域网 IP",
-          "water_heater_id": "热水器模块号",
           "water_heater_ip": "热水器局域网 IP"
         }
       }
     },
     "error": {
       "auth": "账号或密码不正确",
-      "cannot_connect": "无法连接海尔智家云端"
+      "cannot_connect": "无法连接海尔智家云端",
+      "fridge_not_found": "账号中未找到卡萨帝 BCD-501WGCTDM4SSU1 冰箱",
+      "water_heater_not_found": "账号中未找到云溪 JSQ31-16KN7SFRAGU1 热水器"
     },
     "abort": {
       "already_configured": "海尔本地已经配置"
@@ -26,11 +26,9 @@
     "step": {
       "init": {
         "title": "海尔本地",
-        "description": "更新两台设备的模块号和局域网地址。账号仍使用安装时填写的海尔智家登录信息。",
+        "description": "更新两台设备的局域网地址。模块号会在保存时再次从海尔智家账号匹配。",
         "data": {
-          "fridge_id": "冰箱模块号",
           "fridge_ip": "冰箱局域网 IP",
-          "water_heater_id": "热水器模块号",
           "water_heater_ip": "热水器局域网 IP"
         }
       }
