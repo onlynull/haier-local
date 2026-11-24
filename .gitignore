@@ -1,0 +1,11 @@
+﻿__pycache__/
+*.py[cod]
+.storage/
+*.log
+*.jsonl
+haier_localkey.json
+haier_auth_cache.json
+config.json
+data/
+.idea/
+.vscode/

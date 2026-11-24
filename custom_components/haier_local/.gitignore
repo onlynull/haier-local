@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.storage/
+*.log
+*.jsonl
+haier_localkey.json
+haier_auth_cache.json
+config.json
+data/
