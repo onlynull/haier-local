@@ -13,7 +13,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from .const import DOMAIN
 from .devices import DEVICES
 from .entity import HaierLocalEntity, entity_category
-from .mappings import SENSORS, SensorSpec, remaining_attributes
+from .mappings import HALF_PIPE_STATUS, SENSORS, SensorSpec, remaining_attributes
 
 _DEVICE_CLASS = {
     "temperature": SensorDeviceClass.TEMPERATURE,
@@ -68,7 +68,13 @@ class HaierSensor(HaierLocalEntity, SensorEntity):
 
     @property
     def native_value(self) -> Any:
-        return self._values().get(self._key)
+        value = self._values().get(self._key)
+        if self._key == "halfPipeLearningStatus":
+            try:
+                return HALF_PIPE_STATUS.get(int(value), value)
+            except (TypeError, ValueError):
+                return value
+        return value
 
 
 class HaierDetailSensor(HaierLocalEntity, SensorEntity):

@@ -81,6 +81,16 @@ class BinarySpec:
     on_value: Any = True
 
 
+@dataclass(frozen=True, slots=True)
+class TextSpec:
+    key: str
+    name: str
+    icon: str
+    device: DeviceSpec
+    category: str | None = "config"
+    max_length: int = 32
+
+
 VT_ROOM_2_MODES = {
     31: "0°保鲜",
     33: "冰镇",
@@ -104,9 +114,26 @@ PRESSURIZE_MODES = {
 
 WATERFALL_MODES = {
     0: "关闭",
-    1: "模式一",
-    2: "模式二",
-    3: "模式三",
+    1: "低档",
+    2: "中档",
+    3: "高档",
+}
+
+HALF_PIPE_OP_MODES = {
+    0: "关闭",
+    1: "半管",
+}
+
+HALF_PIPE_STATUS = {
+    0: "空闲",
+    1: "学习中",
+    2: "已完成",
+    3: "异常",
+}
+
+SCOUR_MODES = {
+    **{index: f"沐浴 {index}" for index in range(1, 27)},
+    **{index: f"冲洗 {index - 128}" for index in range(129, 141)},
 }
 
 FRIDGE_CLIMATES = (
@@ -169,11 +196,15 @@ SWITCHES = (
     SwitchSpec("smartCapacityChangeStatus", "智能变升", "mdi:swap-vertical", WATER_HEATER, "config"),
     SwitchSpec("uvSterilizationStatus", "UV杀菌", "mdi:bacteria", WATER_HEATER),
     SwitchSpec("internalCirculationStatus", "内循环", "mdi:sync", WATER_HEATER),
+    SwitchSpec("tankWateringStatus", "水箱上水", "mdi:bathtub", WATER_HEATER),
+    SwitchSpec("autoHalfPipeLearningStatus", "半管自动学习", "mdi:pipe", WATER_HEATER, "config", on_value=1, off_value=0),
     SwitchSpec("alarmMuteStatus", "报警静音", "mdi:volume-off", WATER_HEATER, "config"),
     SwitchSpec("NFCStatus", "NFC", "mdi:nfc", WATER_HEATER, "config"),
     SwitchSpec("fanSelfCleaningStatus", "风机自清洁", "mdi:fan-clock", WATER_HEATER, "config"),
     SwitchSpec("safeSelfTestStatus", "安全自检", "mdi:shield-check", WATER_HEATER, "config"),
     SwitchSpec("voiceModuleOnOffStatus", "语音模块", "mdi:account-voice", WATER_HEATER, "config"),
+    SwitchSpec("voiceModuleAutoBroadcastStatus", "语音自动播报", "mdi:bullhorn", WATER_HEATER, "config"),
+    SwitchSpec("voiceModuleWakeStatus", "语音唤醒", "mdi:microphone", WATER_HEATER, "config"),
 )
 
 SELECTS = (
@@ -181,14 +212,30 @@ SELECTS = (
     SelectSpec("zeroColdWaterMode", "零冷水模式", "mdi:water-sync", ZERO_COLD_WATER_MODES, WATER_HEATER),
     SelectSpec("pressurizeMode", "增压模式", "mdi:gauge", PRESSURIZE_MODES, WATER_HEATER),
     SelectSpec("waterfallMode", "瀑布浴", "mdi:waterfall", WATERFALL_MODES, WATER_HEATER),
+    SelectSpec("halfPipeOpModeSet", "半管运行模式", "mdi:pipe-valve", HALF_PIPE_OP_MODES, WATER_HEATER, "config"),
+    SelectSpec("scourState", "沐浴档位", "mdi:shower-head", SCOUR_MODES, WATER_HEATER, "config"),
 )
 
 NUMBERS = (
     NumberSpec("brightness", "显示亮度", "mdi:brightness-percent", 1, 100, 1, "%", FRIDGE),
     NumberSpec("modeBrightness", "夜间模式亮度", "mdi:brightness-6", 1, 50, 1, "%", FRIDGE),
+    NumberSpec("tankTargetTemp", "水箱目标温度", "mdi:bathtub", 0, 70, 1, "°C", WATER_HEATER, None),
+    NumberSpec("tankTargetFlux", "水箱目标水量", "mdi:cup-water", 0, 990, 10, "L", WATER_HEATER, None),
+    NumberSpec("internalCirculationBookTime", "内循环预约时长", "mdi:timer-outline", 0, 50, 1, "min", WATER_HEATER),
     NumberSpec("singleResnTime", "单次预约时长", "mdi:timer-outline", 0, 50, 1, "min", WATER_HEATER),
     NumberSpec("silentResnTime", "静音预约时长", "mdi:timer-sand", 0, 30, 1, "min", WATER_HEATER),
+    NumberSpec("halfPipeLearningTime", "半管学习时间", "mdi:timer", 0, 1800, 1, "s", WATER_HEATER),
+    NumberSpec("halfPipeTimeSet", "半管循环时间", "mdi:timer-sync", 0, 1800, 1, "s", WATER_HEATER),
+    NumberSpec("ecoJudgeTemp", "节能判断温度", "mdi:thermometer", 0, 35, 0.1, "°C", WATER_HEATER),
+    NumberSpec("pumpAntifreezeTemperature", "水泵防冻温度", "mdi:snowflake-thermometer", 0, 10, 1, "°C", WATER_HEATER),
     NumberSpec("voiceModuleVolume", "语音音量", "mdi:volume-high", 0, 255, 1, None, WATER_HEATER),
+)
+
+TEXTS = (
+    TextSpec("lightModeStartTime", "夜间模式开始时间", "mdi:clock-start", FRIDGE),
+    TextSpec("lightModeStopTime", "夜间模式结束时间", "mdi:clock-end", FRIDGE),
+    TextSpec("sharingElectricityStartTime", "分时节电开始时间", "mdi:clock-start", FRIDGE),
+    TextSpec("sharingElectricityEndTime", "分时节电结束时间", "mdi:clock-end", FRIDGE),
 )
 
 SENSORS = (
@@ -202,6 +249,8 @@ SENSORS = (
     SensorSpec("inWaterTemp", "进水温度", "mdi:thermometer-water", WATER_HEATER, "temperature", "°C", "measurement"),
     SensorSpec("backWaterTemp", "回水温度", "mdi:thermometer-chevron-down", WATER_HEATER, "temperature", "°C", "measurement"),
     SensorSpec("indoorTemperature", "室内温度", "mdi:home-thermometer", WATER_HEATER, "temperature", "°C", "measurement"),
+    SensorSpec("tankCurrentFlux", "水箱当前水量", "mdi:cup-water", WATER_HEATER, None, "L", "measurement"),
+    SensorSpec("halfPipeLearningStatus", "半管学习状态", "mdi:pipe", WATER_HEATER, None, None, None, "diagnostic"),
     SensorSpec("curWaterFlux", "当前水流量", "mdi:water", WATER_HEATER, None, "L/min", "measurement"),
     SensorSpec("realTimePowerPct", "实时功率", "mdi:lightning-bolt", WATER_HEATER, None, "%", "measurement"),
     SensorSpec("runFanSpd", "风机转速", "mdi:fan", WATER_HEATER, None, "RPM", "measurement", "diagnostic"),
@@ -220,6 +269,7 @@ BINARY_SENSORS = (
     BinarySpec("fanStatus", "风机", "mdi:fan", WATER_HEATER, None, "diagnostic"),
     BinarySpec("flowStatus", "水流", "mdi:water-pump", WATER_HEATER, None),
     BinarySpec("waterUsedStatus", "正在用水", "mdi:shower", WATER_HEATER, None),
+    BinarySpec("tankWaterLevel", "水箱水位到位", "mdi:water-check", WATER_HEATER, None),
     BinarySpec("pipeAntifreezingStatus", "管道防冻", "mdi:snowflake-alert", WATER_HEATER, None, "diagnostic"),
     BinarySpec("cycAntifreezingStatus", "循环防冻", "mdi:snowflake-check", WATER_HEATER, None, "diagnostic"),
 )
@@ -229,7 +279,6 @@ WATER_HEATER_EXTRAS = (
     "backWaterTemp",
     "indoorTemperature",
     "zeroColdWaterTargetTemp",
-    "tankTargetTemp",
     "curWaterFlux",
     "realTimePowerPct",
     "realTimePower",
@@ -388,6 +437,12 @@ LABELS: dict[str, str] = {
     "internalCirculationStatus": "内循环开关",
     "internalCirculationPumpStatus": "内循环泵状态",
     "internalCirculationBookTime": "内循环预约时长",
+    "halfPipeLearningTime": "半管学习时间",
+    "halfPipeTimeSet": "半管循环时间",
+    "halfPipeOpModeSet": "半管运行模式",
+    "autoHalfPipeLearningStatus": "半管自动学习",
+    "halfPipeLearningStatus": "半管学习状态",
+    "pumpAntifreezeTemperature": "水泵防冻温度",
     "zcwTimingCycleStatus": "零冷水定时循环",
     "compressor1Frequency": "压缩机频率",
     "refrigeratorFanStatus": "冷藏风机状态",
@@ -497,7 +552,7 @@ def _claimed_for(device_key: str) -> set[str]:
     for item in FRIDGE_CLIMATES:
         if item.device.key == device_key:
             keys.update((item.current_key, item.target_key))
-    for collection in (SWITCHES, SELECTS, NUMBERS, SENSORS, BINARY_SENSORS):
+    for collection in (SWITCHES, SELECTS, NUMBERS, SENSORS, BINARY_SENSORS, TEXTS):
         for item in collection:
             if item.device.key == device_key:
                 keys.add(item.key)
@@ -640,6 +695,21 @@ def _display_value(name: str, value: Any) -> Any:
     if name == "waterfallMode":
         try:
             return WATERFALL_MODES.get(int(value), value)
+        except (TypeError, ValueError):
+            return value
+    if name == "halfPipeOpModeSet":
+        try:
+            return HALF_PIPE_OP_MODES.get(int(value), value)
+        except (TypeError, ValueError):
+            return value
+    if name == "halfPipeLearningStatus":
+        try:
+            return HALF_PIPE_STATUS.get(int(value), value)
+        except (TypeError, ValueError):
+            return value
+    if name == "scourState":
+        try:
+            return SCOUR_MODES.get(int(value), value)
         except (TypeError, ValueError):
             return value
     if isinstance(value, bool):
