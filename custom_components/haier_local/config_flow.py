@@ -51,9 +51,19 @@ def _schema(defaults: dict[str, Any] | None = None, *, include_account: bool) ->
     if include_account:
         fields[_required(CONF_PHONE, defaults)] = str
         fields[_required(CONF_PASSWORD, defaults)] = str
-    fields[_required(CONF_FRIDGE_IP, defaults)] = _lan_ip
-    fields[_required(CONF_WATER_HEATER_IP, defaults)] = _lan_ip
+    fields[_required(CONF_FRIDGE_IP, defaults)] = str
+    fields[_required(CONF_WATER_HEATER_IP, defaults)] = str
     return vol.Schema(fields)
+
+
+def _validate_ips(user_input: dict[str, Any], errors: dict[str, str]) -> dict[str, Any]:
+    data = dict(user_input)
+    for key in (CONF_FRIDGE_IP, CONF_WATER_HEATER_IP):
+        try:
+            data[key] = _lan_ip(data[key])
+        except vol.Invalid:
+            errors[key] = "invalid_ip"
+    return data
 
 
 def _resolve_device_ids(phone: str, password: str) -> dict[str, str]:
@@ -84,27 +94,29 @@ class HaierLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="already_configured")
         errors: dict[str, str] = {}
         if user_input is not None:
-            try:
-                device_ids = await self.hass.async_add_executor_job(
-                    _resolve_device_ids,
-                    user_input[CONF_PHONE],
-                    user_input[CONF_PASSWORD],
-                )
-            except PermissionError:
-                errors["base"] = "auth"
-            except AuthenticationError:
-                errors["base"] = "auth"
-            except DeviceLookupError as exc:
-                errors["base"] = f"{exc.spec_key}_not_found"
-            except Exception:
-                _LOGGER.exception("海尔智家登录或匹配设备失败")
-                errors["base"] = "cannot_connect"
-            else:
-                _LOGGER.debug("已从云端匹配冰箱和热水器模块号")
-                await self.async_set_unique_id(DOMAIN)
-                data = dict(user_input)
-                data.update(device_ids)
-                return self.async_create_entry(title="海尔本地", data=data)
+            user_input = _validate_ips(user_input, errors)
+            if not errors:
+                try:
+                    device_ids = await self.hass.async_add_executor_job(
+                        _resolve_device_ids,
+                        user_input[CONF_PHONE],
+                        user_input[CONF_PASSWORD],
+                    )
+                except PermissionError:
+                    errors["base"] = "auth"
+                except AuthenticationError:
+                    errors["base"] = "auth"
+                except DeviceLookupError as exc:
+                    errors["base"] = f"{exc.spec_key}_not_found"
+                except Exception:
+                    _LOGGER.exception("海尔智家登录或匹配设备失败")
+                    errors["base"] = "cannot_connect"
+                else:
+                    _LOGGER.debug("已从云端匹配冰箱和热水器模块号")
+                    await self.async_set_unique_id(DOMAIN)
+                    data = dict(user_input)
+                    data.update(device_ids)
+                    return self.async_create_entry(title="海尔本地", data=data)
         return self.async_show_form(
             step_id="user",
             data_schema=_schema(user_input, include_account=True),
@@ -123,6 +135,14 @@ class HaierLocalOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         entry = self.config_entry
         if user_input is not None:
+            errors: dict[str, str] = {}
+            user_input = _validate_ips(user_input, errors)
+            if errors:
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=_schema({**entry.data, **user_input}, include_account=False),
+                    errors=errors,
+                )
             data = dict(entry.data)
             data.update(user_input)
             phone = data.get(CONF_PHONE)

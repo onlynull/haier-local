@@ -16,7 +16,8 @@
       "auth": "账号或密码不正确",
       "cannot_connect": "无法连接海尔智家云端",
       "fridge_not_found": "账号中未找到卡萨帝 BCD-501WGCTDM4SSU1 冰箱",
-      "water_heater_not_found": "账号中未找到云溪 JSQ31-16KN7SFRAGU1 热水器"
+      "water_heater_not_found": "账号中未找到云溪 JSQ31-16KN7SFRAGU1 热水器",
+      "invalid_ip": "请填写有效的局域网 IPv4 地址"
     },
     "abort": {
       "already_configured": "海尔本地已经配置"
@@ -32,6 +33,9 @@
           "water_heater_ip": "热水器局域网 IP"
         }
       }
+    },
+    "error": {
+      "invalid_ip": "请填写有效的局域网 IPv4 地址"
     }
   }
 }
