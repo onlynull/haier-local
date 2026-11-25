@@ -106,6 +106,14 @@ class HaierClient:
         """异步写入一个 profile 字段。"""
         return await self.control.async_set(name, value, timeout)
 
+    def set_operation(self, name: str, fields: dict[str, Any] | None = None, timeout: float = 10.0):
+        """写入一条 profile Operation。"""
+        return self.control.set_operation(name, fields, timeout)
+
+    async def async_set_operation(self, name: str, fields: dict[str, Any] | None = None, timeout: float = 10.0):
+        """异步写入一条 profile Operation。"""
+        return await self.control.async_set_operation(name, fields, timeout)
+
     async def async_refresh_credentials(self) -> None:
         """刷新凭据后重建连接。"""
         await self.async_stop()

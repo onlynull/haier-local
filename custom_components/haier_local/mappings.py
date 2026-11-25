@@ -33,6 +33,7 @@ class SwitchSpec:
     on_value: Any = True
     off_value: Any = False
     unique_key: str | None = None
+    control: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +91,8 @@ class TextSpec:
     device: DeviceSpec
     category: str | None = "config"
     max_length: int = 32
+    unique_key: str | None = None
+    control: str | None = None
 
 
 VT_ROOM_2_MODES = {
@@ -100,10 +103,15 @@ VT_ROOM_2_MODES = {
 }
 
 ZERO_COLD_WATER_MODES = {
+    0: "关闭",
+    1: "单次零冷水",
+    2: "定时零冷水",
+    3: "水动零冷水",
     4: "关闭",
-    5: "单次循环",
-    6: "预约循环",
+    5: "单次零冷水",
+    6: "水动零冷水",
     7: "全程循环",
+    10: "半管循环",
 }
 
 PRESSURIZE_MODES = {
@@ -207,31 +215,28 @@ SWITCHES = (
     SwitchSpec("voiceModuleAutoBroadcastStatus", "语音自动播报", "mdi:bullhorn", WATER_HEATER, "config"),
     SwitchSpec("voiceModuleWakeStatus", "语音唤醒", "mdi:microphone", WATER_HEATER, "config"),
     SwitchSpec(
-        "zeroColdWaterMode",
-        "零冷水单次循环",
+        "zeroColdWaterStatus",
+        "单次零冷水",
         "mdi:water-sync",
         WATER_HEATER,
-        on_value=5,
-        off_value=4,
         unique_key="zeroColdWaterMode_single",
+        control="zcw_single",
     ),
     SwitchSpec(
-        "zeroColdWaterMode",
-        "零冷水预约循环",
+        "cycFuncSelect",
+        "水动零冷水",
+        "mdi:faucet",
+        WATER_HEATER,
+        unique_key="zeroColdWaterMode_water",
+        control="zcw_water",
+    ),
+    SwitchSpec(
+        "zcwTimingCycleStatus",
+        "定时零冷水",
         "mdi:calendar-clock",
         WATER_HEATER,
-        on_value=6,
-        off_value=4,
-        unique_key="zeroColdWaterMode_book",
-    ),
-    SwitchSpec(
-        "zeroColdWaterMode",
-        "零冷水全程循环",
-        "mdi:infinity",
-        WATER_HEATER,
-        on_value=7,
-        off_value=4,
-        unique_key="zeroColdWaterMode_always",
+        unique_key="zeroColdWaterMode_timing",
+        control="zcw_timing",
     ),
 )
 
@@ -249,7 +254,7 @@ NUMBERS = (
     NumberSpec("tankTargetTemp", "水箱目标温度", "mdi:bathtub", 0, 70, 1, "°C", WATER_HEATER, None),
     NumberSpec("tankTargetFlux", "水箱目标水量", "mdi:cup-water", 0, 990, 10, "L", WATER_HEATER, None),
     NumberSpec("internalCirculationBookTime", "内循环预约时长", "mdi:timer-outline", 0, 50, 1, "min", WATER_HEATER),
-    NumberSpec("singleResnTime", "单次预约时长", "mdi:timer-outline", 0, 50, 1, "min", WATER_HEATER),
+    NumberSpec("singleResnTime", "单次零冷水时长", "mdi:timer-outline", 0, 50, 1, "min", WATER_HEATER),
     NumberSpec("silentResnTime", "静音预约时长", "mdi:timer-sand", 0, 30, 1, "min", WATER_HEATER),
     NumberSpec("halfPipeLearningTime", "半管学习时间", "mdi:timer", 0, 1800, 1, "s", WATER_HEATER),
     NumberSpec("halfPipeTimeSet", "半管循环时间", "mdi:timer-sync", 0, 1800, 1, "s", WATER_HEATER),
@@ -263,6 +268,15 @@ TEXTS = (
     TextSpec("lightModeStopTime", "夜间模式结束时间", "mdi:clock-end", FRIDGE),
     TextSpec("sharingElectricityStartTime", "分时节电开始时间", "mdi:clock-start", FRIDGE),
     TextSpec("sharingElectricityEndTime", "分时节电结束时间", "mdi:clock-end", FRIDGE),
+    TextSpec(
+        "workHour",
+        "零冷水用水时段",
+        "mdi:clock-outline",
+        WATER_HEATER,
+        max_length=80,
+        unique_key="zcw_hours",
+        control="zcw_hours",
+    ),
 )
 
 SENSORS = (
@@ -322,6 +336,11 @@ WATER_HEATER_EXTRAS = (
     "zeroColdWaterMode",
     "zeroColdWaterStatus",
     "zeroColdWaterFuncExist",
+    "cycFuncSelect",
+    "zcwTimingCycleStatus",
+    "waterCycleFinish",
+    "singleCycleFinish",
+    "internalCirculationPumpStatus",
     "pressurizeMode",
     "pressurizeSupported",
     "waterfallMode",
@@ -390,7 +409,7 @@ LABELS: dict[str, str] = {
     "tankCurrentFlux": "水箱当前水量",
     "coValue": "一氧化碳浓度",
     "ch4Value": "甲烷浓度",
-    "singleResnTime": "单次预约时长",
+    "singleResnTime": "单次零冷水时长",
     "userWaterBurnTime": "本次燃烧时长",
     "tankWateringStatus": "水箱上水",
     "tankWaterLevel": "水箱水位到位",
@@ -749,3 +768,95 @@ def option_value(spec: SelectSpec, option: str) -> Any:
         if text == option:
             return raw
     raise ValueError(option)
+
+
+def _as_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def parse_hour_text(text: str) -> list[int]:
+    """把 `7-9,18,20-22` 或 `07:00-09:00` 解析成 0-23 小时列表。"""
+    hours: set[int] = set()
+    raw = str(text or "").replace("，", ",").replace("；", ",").replace(";", ",")
+    for part in raw.split(","):
+        item = part.strip()
+        if not item or item in {"无", "off", "关闭", "none"}:
+            continue
+        if "-" in item:
+            start_text, end_text = item.split("-", 1)
+            start = _as_int(start_text.strip().split(":")[0], -1)
+            end = _as_int(end_text.strip().split(":")[0], -1)
+            if start < 0 or end < 0:
+                continue
+            if start <= end:
+                hours.update(range(start, end + 1))
+            else:
+                hours.update(range(start, 24))
+                hours.update(range(0, end + 1))
+            continue
+        hour = _as_int(item.split(":")[0], -1)
+        if 0 <= hour <= 23:
+            hours.add(hour)
+    return [hour for hour in range(24) if hour in hours]
+
+
+def format_hour_text(hours: list[int] | tuple[int, ...]) -> str:
+    selected = sorted({hour for hour in hours if 0 <= hour <= 23})
+    if not selected:
+        return "无"
+    ranges: list[str] = []
+    start = prev = selected[0]
+    for hour in selected[1:]:
+        if hour == prev + 1:
+            prev = hour
+            continue
+        ranges.append(f"{start}-{prev}" if start != prev else str(start))
+        start = prev = hour
+    ranges.append(f"{start}-{prev}" if start != prev else str(start))
+    return ",".join(ranges)
+
+
+def hours_from_values(values: Mapping[str, Any] | None) -> list[int]:
+    data = values or {}
+    for prefix, _title in _SCHEDULE_HOURS:
+        hours = [hour for hour in range(24) if data.get(f"{prefix}{hour}")]
+        if hours:
+            return hours
+    return []
+
+
+def hour_fields_from_text(text: str) -> dict[str, int]:
+    selected = set(parse_hour_text(text))
+    fields: dict[str, int] = {}
+    for prefix, _title in _SCHEDULE_HOURS:
+        for hour in range(24):
+            fields[f"{prefix}{hour}"] = 1 if hour in selected else 0
+    return fields
+
+
+def zero_cold_single_on(values: Mapping[str, Any] | None) -> bool:
+    data = values or {}
+    if data.get("zcwTimingCycleStatus") in (True, 1, "1"):
+        return False
+    if _as_int(data.get("cycFuncSelect")) == 1:
+        return False
+    status = _as_int(data.get("zeroColdWaterStatus"))
+    mode = _as_int(data.get("zeroColdWaterMode"), 4)
+    return status not in (0,) or mode in (1, 5)
+
+
+def zero_cold_water_on(values: Mapping[str, Any] | None) -> bool:
+    data = values or {}
+    if _as_int(data.get("cycFuncSelect")) == 1:
+        return True
+    return _as_int(data.get("zeroColdWaterMode"), 4) in (3, 6)
+
+
+def zero_cold_timing_on(values: Mapping[str, Any] | None) -> bool:
+    data = values or {}
+    if data.get("zcwTimingCycleStatus") in (True, 1, "1"):
+        return True
+    return _as_int(data.get("zeroColdWaterMode"), 4) == 2

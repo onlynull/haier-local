@@ -1359,23 +1359,30 @@ def probe_local_56800(ip: str, device_id: str, local_key: str, local_key_version
                         command = command_queue.get_nowait()
                     except queue.Empty:
                         break
-                    if not command or command.get('kind') != 'attr_write':
+                    kind = command.get('kind') if command else None
+                    if kind not in ('attr_write', 'epp_write'):
                         _complete_control_command(command, ok=False, error='unsupported_command')
                         continue
                     try:
                         from .protocol.epp import build_cae_op_request, build_old_epp_frame, wrap_cae_epp_envelope
-                        name = str(command['name'])
-                        wire = str(command.get('wire') or 'haismart')
                         decoder = current_decoder()
                         if decoder is None:
                             _complete_control_command(command, ok=False, error='profile_missing')
                             continue
-                        built = decoder.encode_epp_write(name, command['value'])
-                        attr_text = decoder.encode_write_value(name, command['value'])
-                        command['expected'] = command['value']
+                        if kind == 'epp_write':
+                            built = command.get('built') or {}
+                            name = str(built.get('name') or command.get('name') or 'operation')
+                            attr_text = ''
+                            wire = 'haismart'
+                        else:
+                            name = str(command['name'])
+                            wire = str(command.get('wire') or 'haismart')
+                            built = decoder.encode_epp_write(name, command['value'])
+                            attr_text = decoder.encode_write_value(name, command['value'])
+                        command['expected'] = command.get('value')
                         command['meta'] = built
                         sizes = []
-                        if wire in ('coap', 'both'):
+                        if kind == 'attr_write' and wire in ('coap', 'both'):
                             coap_pdu, cmeta = build_cae_attr_write_coap(
                                 device_id, name, attr_text, local_port=port,
                                 token_seed=next_coap_token, message_id=next_coap_mid,

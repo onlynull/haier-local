@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import DOMAIN
 from .entity import HaierLocalEntity, entity_category
-from .mappings import TEXTS, TextSpec
+from .mappings import TEXTS, TextSpec, format_hour_text, hours_from_values
 
 
 async def async_setup_entry(
@@ -28,7 +28,7 @@ class HaierText(HaierLocalEntity, TextEntity):
     _attr_native_min = 0
 
     def __init__(self, coordinator, spec: TextSpec) -> None:
-        super().__init__(coordinator, spec.device, spec.key)
+        super().__init__(coordinator, spec.device, spec.key, unique_key=spec.unique_key)
         self._spec = spec
         self._attr_name = spec.name
         self._attr_icon = spec.icon
@@ -37,14 +37,27 @@ class HaierText(HaierLocalEntity, TextEntity):
 
     @property
     def available(self) -> bool:
+        if self._spec.control:
+            return super().available
         return super().available and self._key in self._values()
 
     @property
     def native_value(self) -> str | None:
+        if self._spec.control == "zcw_hours":
+            return format_hour_text(hours_from_values(self._values()))
         value = self._values().get(self._key)
         if value is None:
             return None
         return str(value)
 
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        if self._spec.control != "zcw_hours":
+            return None
+        return {"填写格式": "7-9,18-22"}
+
     async def async_set_value(self, value: str) -> None:
+        if self._spec.control == "zcw_hours":
+            await self.coordinator.async_set_zcw_hours(value)
+            return
         await self.coordinator.async_set_field(self._key, value)

@@ -319,7 +319,10 @@ class HaierProfileDecoder:
                 except (TypeError, ValueError):
                     continue
             if epp_value is None:
-                raise ValueError(f'{name} 无法映射 EPP 值 {std_value!r}')
+                try:
+                    epp_value = int(std_value)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f'{name} 无法映射 EPP 值 {std_value!r}') from exc
         else:
             if text in ('true', 'false'):
                 epp_value = 1 if text == 'true' else 0
@@ -338,6 +341,63 @@ class HaierProfileDecoder:
             'epp_cmd': str(cmd).upper(),
             'frame_type': int(frame_type),
             'param': epp_value.to_bytes(width, 'big'),
+        }
+
+    @staticmethod
+    def _operation_int(value: Any) -> int:
+        if value is True or value is False:
+            return int(value)
+        if isinstance(value, str):
+            text = value.strip().lower()
+            if text in {'true', 'on', '1'} or value.strip() in {'开', '开启'}:
+                return 1
+            if text in {'false', 'off', '0'} or value.strip() in {'关', '关闭'}:
+                return 0
+        return int(value)
+
+    def encode_operation(self, name: str, fields: Mapping[str, Any] | None = None) -> Dict[str, Any]:
+        """把 Operation 多字段编成 frameType 96 的 OLD-EPP 参数。"""
+        operation = self.operations.get(name)
+        if operation is None:
+            raise KeyError(f'profile 中没有操作 {name}')
+        cmd = operation.get('eppCmd')
+        frame_type = operation.get('frameType')
+        if not cmd or frame_type is None:
+            raise ValueError(f'{name} 缺少 eppCmd/frameType，无法局域网写入')
+        variants = operation.get('variants') or []
+        if not variants:
+            raise ValueError(f'{name} 没有可编码字段')
+        payload_fields = dict(fields or {})
+        size = 0
+        packed: List[Tuple[Dict[str, Any], int, int, int, int]] = []
+        for variant in variants:
+            field_name = variant.get('name')
+            if not field_name:
+                continue
+            raw_value = self._operation_int(payload_fields[field_name]) if field_name in payload_fields else 0
+            start_byte, bit_in_byte, byte_len = self._byte_aligned_location(variant)
+            size = max(size, start_byte + byte_len)
+            packed.append((variant, raw_value, start_byte, bit_in_byte, byte_len))
+        buf = bytearray(size)
+        for variant, raw_value, start_byte, bit_in_byte, byte_len in packed:
+            length = int(variant.get('length') or 0)
+            if length <= 0 or byte_len <= 0:
+                continue
+            mask = (1 << length) - 1
+            value = int(raw_value) & mask
+            if length <= 8:
+                current = int.from_bytes(buf[start_byte:start_byte + byte_len], 'big')
+                current &= ~(mask << bit_in_byte)
+                current |= value << bit_in_byte
+                buf[start_byte:start_byte + byte_len] = current.to_bytes(byte_len, 'big')
+            else:
+                buf[start_byte:start_byte + byte_len] = value.to_bytes(byte_len, 'big')
+        return {
+            'name': name,
+            'epp_cmd': str(cmd).upper(),
+            'frame_type': int(frame_type),
+            'param': bytes(buf),
+            'fields': payload_fields,
         }
 
     def decode_alarm_bitmap(self, data: bytes) -> Dict[str, Any]:

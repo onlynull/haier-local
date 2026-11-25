@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, Mapping
 
 from .errors import ControlError, TransportError
 from .profile_decoder import HaierProfileDecoder
@@ -57,3 +57,20 @@ class DeviceController:
 
     async def async_set(self, name: str, value: Any, timeout: float = 10.0) -> dict[str, Any]:
         return await asyncio.to_thread(self.set, name, value, timeout)
+
+    def set_operation(self, name: str, fields: Mapping[str, Any] | None = None, timeout: float = 10.0) -> dict[str, Any]:
+        """发送 profile Operation（frameType 96 组设），例如单次/定时零冷水。"""
+        try:
+            built = self._profile().encode_operation(name, fields)
+        except KeyError as exc:
+            raise ControlError(str(exc)) from exc
+        except ValueError as exc:
+            raise ControlError(str(exc)) from exc
+        if not self._client.transport.running:
+            raise TransportError("局域网连接未运行，无法发送控制指令")
+        return self._client.transport.send_epp_write(built, timeout=timeout)
+
+    async def async_set_operation(
+        self, name: str, fields: Mapping[str, Any] | None = None, timeout: float = 10.0
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(self.set_operation, name, fields, timeout)

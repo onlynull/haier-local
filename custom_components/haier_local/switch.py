@@ -11,7 +11,16 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import DOMAIN
 from .entity import HaierLocalEntity, entity_category
-from .mappings import SWITCHES, SwitchSpec, _display_value
+from .mappings import (
+    SWITCHES,
+    SwitchSpec,
+    _display_value,
+    format_hour_text,
+    hours_from_values,
+    zero_cold_single_on,
+    zero_cold_timing_on,
+    zero_cold_water_on,
+)
 
 
 async def async_setup_entry(
@@ -46,11 +55,21 @@ class HaierSwitch(HaierLocalEntity, SwitchEntity):
 
     @property
     def available(self) -> bool:
+        if self._spec.control:
+            return super().available
         return super().available and self._key in self._values()
 
     @property
     def is_on(self) -> bool | None:
-        value = self._values().get(self._key)
+        values = self._values()
+        control = self._spec.control
+        if control == "zcw_single":
+            return zero_cold_single_on(values)
+        if control == "zcw_water":
+            return zero_cold_water_on(values)
+        if control == "zcw_timing":
+            return zero_cold_timing_on(values)
+        value = values.get(self._key)
         if value is None:
             return None
         if value is True and self._spec.on_value is True:
@@ -70,15 +89,33 @@ class HaierSwitch(HaierLocalEntity, SwitchEntity):
                 "分时节电开始时间": values.get("sharingElectricityStartTime"),
                 "分时节电结束时间": values.get("sharingElectricityEndTime"),
             }
-        if self._key == "zeroColdWaterMode":
-            return {
-                "当前模式": _display_value("zeroColdWaterMode", values.get(self._key)),
+        if self._spec.control in {"zcw_single", "zcw_water", "zcw_timing"}:
+            attrs = {
+                "当前模式": _display_value("zeroColdWaterMode", values.get("zeroColdWaterMode")),
                 "零冷水状态": values.get("zeroColdWaterStatus"),
+                "循环泵": values.get("internalCirculationPumpStatus"),
+                "安全锁": values.get("safetyLockStatus"),
+                "用水时段": format_hour_text(hours_from_values(values)),
             }
+            if self._spec.control == "zcw_single":
+                attrs["说明"] = "点击后立即预热，仅本次有效"
+                attrs["单次时长"] = values.get("singleResnTime")
+            elif self._spec.control == "zcw_water":
+                attrs["说明"] = "开启水龙头并调向热水侧，2-6秒内关闭即可启动预热"
+            else:
+                attrs["说明"] = "设定用水时段后，到点自动循环预热"
+                attrs["定时循环"] = values.get("zcwTimingCycleStatus")
+            return attrs
         return None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        if self._spec.control:
+            await self.coordinator.async_set_zero_cold(self._spec.control.replace("zcw_", ""), True)
+            return
         await self.coordinator.async_set_field(self._key, self._spec.on_value)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
+        if self._spec.control:
+            await self.coordinator.async_set_zero_cold(self._spec.control.replace("zcw_", ""), False)
+            return
         await self.coordinator.async_set_field(self._key, self._spec.off_value)

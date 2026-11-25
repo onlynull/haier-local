@@ -58,13 +58,12 @@ class HaierLocalCoordinator(DataUpdateCoordinator[DeviceState | None]):
     def _receive_in_hass(self, state: DeviceState) -> None:
         self.async_set_updated_data(state)
 
-    async def async_set_field(self, name: str, value: Any) -> None:
-        await self.client.async_set(name, value)
+    def _merge_values(self, updates: dict[str, Any]) -> None:
         state = self.data
-        if state is None:
+        if state is None or not updates:
             return
         values = dict(state.values)
-        values[name] = value
+        values.update(updates)
         self.async_set_updated_data(
             DeviceState(
                 device_id=state.device_id,
@@ -73,6 +72,73 @@ class HaierLocalCoordinator(DataUpdateCoordinator[DeviceState | None]):
                 raw=state.raw,
             )
         )
+
+    async def async_set_field(self, name: str, value: Any) -> None:
+        await self.client.async_set(name, value)
+        self._merge_values({name: value})
+
+    async def async_set_operation(self, name: str, fields: dict[str, Any] | None = None) -> None:
+        payload = dict(fields or {})
+        await self.client.async_set_operation(name, payload)
+        self._merge_values(payload)
+
+    async def async_set_zero_cold(self, action: str, on: bool) -> None:
+        values = dict(self.data.values) if self.data else {}
+        if action == "single":
+            try:
+                minutes = int(values.get("singleResnTime") or 0)
+            except (TypeError, ValueError):
+                minutes = 0
+            if minutes <= 0:
+                minutes = 20
+            await self.async_set_operation(
+                "grSetSingleResn",
+                {"zeroColdWaterStatus": 1 if on else 0, "singleResnTime": minutes},
+            )
+            try:
+                await self.async_set_field("zeroColdWaterStatus", 1 if on else 0)
+            except Exception as exc:
+                _LOGGER.debug("单次零冷水状态字段写入失败：%s", exc)
+            self._merge_values({"zeroColdWaterStatus": 1 if on else 0, "singleResnTime": minutes})
+            return
+        if action == "water":
+            await self.async_set_field("zeroColdWaterMode", 6 if on else 4)
+            self._merge_values({"cycFuncSelect": 1 if on else 0, "zeroColdWaterMode": 6 if on else 4})
+            return
+        if action == "timing":
+            temp = values.get("zeroColdWaterTargetTemp")
+            if temp in (None, ""):
+                temp = values.get("targetTemp") or 0
+            try:
+                temp = int(temp)
+            except (TypeError, ValueError):
+                temp = 0
+            await self.async_set_operation(
+                "zcwTimingCycle",
+                {
+                    "zeroColdWaterStatus": 1 if on else 0,
+                    "timingCMTargetTemperature": temp,
+                    "timingCycleStartDate": 0,
+                    "timingCycleStartTime": 0,
+                    "timingCycleEndDate": 0,
+                    "timingCycleEndTime": 0,
+                },
+            )
+            self._merge_values({"zcwTimingCycleStatus": on, "zeroColdWaterStatus": 1 if on else 0})
+            return
+        raise ValueError(f"未知零冷水动作: {action}")
+
+    async def async_set_zcw_hours(self, text: str) -> None:
+        from .mappings import hour_fields_from_text, parse_hour_text
+
+        fields = hour_fields_from_text(text)
+        await self.async_set_operation("grSetCycResnAll", fields)
+        selected = set(parse_hour_text(text))
+        updates = {
+            name: (1 if int(name.rsplit("Hour", 1)[-1]) in selected else 0)
+            for name in fields
+        }
+        self._merge_values(updates)
 
     async def async_stop(self) -> None:
         if self._remove_api_listener:

@@ -78,6 +78,27 @@ class LanTransport:
             raise ControlError(str(result.get("error") or f"{name} 控制失败"))
         return result
 
+    def send_epp_write(self, built: dict[str, Any], timeout: float = 10.0) -> dict[str, Any]:
+        """发送已经编码好的 Operation/EPP 帧。"""
+        if not self.running:
+            raise TransportError("局域网连接未运行，无法发送控制指令")
+        name = str(built.get("name") or "operation")
+        command = {
+            "kind": "epp_write",
+            "name": name,
+            "built": built,
+            "value": built.get("fields"),
+            "done": threading.Event(),
+            "result": {},
+        }
+        self._command_queue.put(command)
+        if not command["done"].wait(timeout):
+            raise TransportError(f"等待 {name} 控制应答超时")
+        result = dict(command.get("result") or {})
+        if not result.get("ok"):
+            raise ControlError(str(result.get("error") or f"{name} 控制失败"))
+        return result
+
     def _fail_queued_commands(self, reason: str) -> None:
         while True:
             try:
