@@ -32,6 +32,7 @@ class SwitchSpec:
     category: str | None = None
     on_value: Any = True
     off_value: Any = False
+    unique_key: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,11 +206,37 @@ SWITCHES = (
     SwitchSpec("voiceModuleOnOffStatus", "语音模块", "mdi:account-voice", WATER_HEATER, "config"),
     SwitchSpec("voiceModuleAutoBroadcastStatus", "语音自动播报", "mdi:bullhorn", WATER_HEATER, "config"),
     SwitchSpec("voiceModuleWakeStatus", "语音唤醒", "mdi:microphone", WATER_HEATER, "config"),
+    SwitchSpec(
+        "zeroColdWaterMode",
+        "零冷水单次循环",
+        "mdi:water-sync",
+        WATER_HEATER,
+        on_value=5,
+        off_value=4,
+        unique_key="zeroColdWaterMode_single",
+    ),
+    SwitchSpec(
+        "zeroColdWaterMode",
+        "零冷水预约循环",
+        "mdi:calendar-clock",
+        WATER_HEATER,
+        on_value=6,
+        off_value=4,
+        unique_key="zeroColdWaterMode_book",
+    ),
+    SwitchSpec(
+        "zeroColdWaterMode",
+        "零冷水全程循环",
+        "mdi:infinity",
+        WATER_HEATER,
+        on_value=7,
+        off_value=4,
+        unique_key="zeroColdWaterMode_always",
+    ),
 )
 
 SELECTS = (
     SelectSpec("vtRoom2TargetTempLevel", "第二变温室", "mdi:snowflake-thermometer", VT_ROOM_2_MODES, FRIDGE),
-    SelectSpec("zeroColdWaterMode", "零冷水模式", "mdi:water-sync", ZERO_COLD_WATER_MODES, WATER_HEATER),
     SelectSpec("pressurizeMode", "增压模式", "mdi:gauge", PRESSURIZE_MODES, WATER_HEATER),
     SelectSpec("waterfallMode", "瀑布浴", "mdi:waterfall", WATERFALL_MODES, WATER_HEATER),
     SelectSpec("halfPipeOpModeSet", "半管运行模式", "mdi:pipe-valve", HALF_PIPE_OP_MODES, WATER_HEATER, "config"),

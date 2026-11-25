@@ -47,9 +47,12 @@ class HaierLocalCoordinator(DataUpdateCoordinator[DeviceState | None]):
             try:
                 state = await self.client.async_get_status(timeout=15.0)
             except HaierError as exc:
-                _LOGGER.warning("%s 暂时不可达，将在后台重连：%s", self.spec.name, exc)
-            else:
-                self.async_set_updated_data(state)
+                _LOGGER.warning("%s 暂时不可达，%.0f 秒后重试：%s", self.spec.name, delay, exc)
+                await self.client.async_stop()
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 300.0)
+                continue
+            self.async_set_updated_data(state)
             return
 
     def _receive_in_hass(self, state: DeviceState) -> None:
@@ -57,6 +60,19 @@ class HaierLocalCoordinator(DataUpdateCoordinator[DeviceState | None]):
 
     async def async_set_field(self, name: str, value: Any) -> None:
         await self.client.async_set(name, value)
+        state = self.data
+        if state is None:
+            return
+        values = dict(state.values)
+        values[name] = value
+        self.async_set_updated_data(
+            DeviceState(
+                device_id=state.device_id,
+                available=state.available,
+                values=values,
+                raw=state.raw,
+            )
+        )
 
     async def async_stop(self) -> None:
         if self._remove_api_listener:

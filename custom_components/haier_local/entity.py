@@ -24,12 +24,18 @@ class HaierLocalEntity(CoordinatorEntity[HaierLocalCoordinator]):
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: HaierLocalCoordinator, spec: DeviceSpec, key: str) -> None:
+    def __init__(
+        self,
+        coordinator: HaierLocalCoordinator,
+        spec: DeviceSpec,
+        key: str,
+        unique_key: str | None = None,
+    ) -> None:
         super().__init__(coordinator)
         self._key = key
         self._spec = spec
         device_id = coordinator.client.config.device_id
-        self._attr_unique_id = f"{device_id}_{key}"
+        self._attr_unique_id = f"{device_id}_{unique_key or key}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, device_id)},
             connections={(CONNECTION_NETWORK_MAC, format_mac(device_id))},

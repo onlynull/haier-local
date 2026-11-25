@@ -760,8 +760,30 @@ def _complete_control_command(command, **result):
 
 def _fail_pending_controls(pending, reason: str):
     for command in list(pending.values()):
+        done = command.get('done')
+        if done is not None and done.is_set():
+            continue
         _complete_control_command(command, ok=False, error=reason)
     pending.clear()
+
+def _control_values_match(current, expected) -> bool:
+    if current is expected or current == expected:
+        return True
+    if isinstance(current, dict):
+        return _control_values_match(current.get('value'), expected)
+    if isinstance(expected, bool) or isinstance(current, bool):
+        truthy = {True, 1, '1', 'true', 'on'}
+        falsy = {False, 0, '0', 'false', 'off'}
+        if expected in truthy or expected is True:
+            return current in truthy or current is True
+        if expected in falsy or expected is False:
+            return current in falsy or current is False
+        return False
+    try:
+        return float(current) == float(expected)
+    except (TypeError, ValueError):
+        return str(current) == str(expected)
+
 
 def _resolve_pending_writes(pending, fields):
     if not pending or not isinstance(fields, dict):
@@ -771,13 +793,10 @@ def _resolve_pending_writes(pending, fields):
         if name not in fields:
             continue
         current = fields.get(name)
-        if current == expected or current == command.get('value'):
+        if _control_values_match(current, expected) or _control_values_match(current, command.get('value')):
             pending.pop(name, None)
-            _complete_control_command(command, ok=True, confirmed=True, value=current)
-            continue
-        if isinstance(current, dict) and current.get('value') in (expected, command.get('value')):
-            pending.pop(name, None)
-            _complete_control_command(command, ok=True, confirmed=True, value=current.get('value'))
+            value = current.get('value') if isinstance(current, dict) else current
+            _complete_control_command(command, ok=True, confirmed=True, value=value)
 
 def build_secure_coap_packet(coap_pdu: bytes, local_key: str, *, biz_sn: int, uss_sn: int, session: int, type_byte: int):
     encrypted = biz_encrypt(coap_pdu, local_key, biz_sn)
@@ -1409,6 +1428,14 @@ def probe_local_56800(ip: str, device_id: str, local_key: str, local_key_version
                             f'[WRITE>] wire={wire} {name} std={command['value']!r} json={attr_text!r} '
                             f'epp={built['epp_cmd']}:{built['param'].hex()} {" ".join(sizes)}'
                         )
+                        _resolve_pending_writes(pending_controls, state_cache.fields)
+                        if command.get('done') is not None and not command['done'].is_set():
+                            # haismart 没有 CoAP ACK；热水器经常不回 6C01。先完成发送，状态由后续推送纠正。
+                            _complete_control_command(
+                                command, ok=True, confirmed=False, submitted=True,
+                                value=command.get('value'),
+                            )
+                            print(f'[WRITE<] submitted {name} std={command['value']!r} cache={state_cache.fields.get(name)!r}')
                     except Exception as e:
                         _complete_control_command(command, ok=False, error=repr(e))
             if heartbeat_enabled and now - last_hb_sent >= heartbeat_interval:

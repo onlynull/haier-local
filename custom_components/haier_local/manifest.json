@@ -6,5 +6,5 @@
   "documentation": "https://github.com/onlynull/haier-local",
   "iot_class": "local_push",
   "requirements": ["requests>=2.31.0", "cryptography>=41.0.0"],
-  "version": "0.2.4"
+  "version": "0.2.5"
 }
